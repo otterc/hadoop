@@ -30,7 +30,7 @@ public class ResourceInformation implements Comparable<ResourceInformation> {
   private String name;
   private String units;
   private ResourceTypes resourceType;
-  private Long value;
+  private long value;
 
   private static final String MEMORY_URI = "memory-mb";
   private static final String VCORES_URI = "vcores";
@@ -104,7 +104,7 @@ public class ResourceInformation implements Comparable<ResourceInformation> {
    *
    * @return the resource value
    */
-  public Long getValue() {
+  public long getValue() {
     return value;
   }
 
@@ -113,7 +113,7 @@ public class ResourceInformation implements Comparable<ResourceInformation> {
    *
    * @param rValue the resource value
    */
-  public void setValue(Long rValue) {
+  public void setValue(long rValue) {
     this.value = rValue;
   }
 
@@ -125,15 +125,12 @@ public class ResourceInformation implements Comparable<ResourceInformation> {
    */
   public static ResourceInformation newInstance(ResourceInformation other) {
     ResourceInformation ret = new ResourceInformation();
-    ret.setName(other.getName());
-    ret.setResourceType(other.getResourceType());
-    ret.setUnits(other.getUnits());
-    ret.setValue(other.getValue());
+    copy(other, ret);
     return ret;
   }
 
   public static ResourceInformation newInstance(String name, String units,
-      Long value, ResourceTypes type) {
+      long value, ResourceTypes type) {
     ResourceInformation ret = new ResourceInformation();
     ret.setName(name);
     ret.setResourceType(type);
@@ -143,7 +140,7 @@ public class ResourceInformation implements Comparable<ResourceInformation> {
   }
 
   public static ResourceInformation newInstance(String name, String units,
-      Long value) {
+      long value) {
     return ResourceInformation
         .newInstance(name, units, value, ResourceTypes.COUNTABLE);
   }
@@ -153,13 +150,27 @@ public class ResourceInformation implements Comparable<ResourceInformation> {
         .newInstance(name, units, 0L, ResourceTypes.COUNTABLE);
   }
 
-  public static ResourceInformation newInstance(String name, Long value) {
+  public static ResourceInformation newInstance(String name, long value) {
     return ResourceInformation
         .newInstance(name, "", value, ResourceTypes.COUNTABLE);
   }
 
   public static ResourceInformation newInstance(String name) {
     return ResourceInformation.newInstance(name, "");
+  }
+
+  /**
+   * Copies the content of the source ResourceInformation object to the
+   * destination object, overwriting all properties of the destination object.
+   * @param src Source ResourceInformation object
+   * @param dst Destination ResourceInformation object
+   */
+
+  public static void copy(ResourceInformation src, ResourceInformation dst) {
+    dst.setName(src.getName());
+    dst.setResourceType(src.getResourceType());
+    dst.setUnits(src.getUnits());
+    dst.setValue(src.getValue());
   }
 
   @Override
@@ -197,7 +208,7 @@ public class ResourceInformation implements Comparable<ResourceInformation> {
         939769357 + name.hashCode(); // prime * result = 939769357 initially
     result = prime * result + resourceType.hashCode();
     result = prime * result + units.hashCode();
-    result = prime * result + value.hashCode();
+    result = prime * result + Long.hashCode(value);
     return result;
   }
 
