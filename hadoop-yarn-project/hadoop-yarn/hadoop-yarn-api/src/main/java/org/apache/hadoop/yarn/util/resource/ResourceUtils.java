@@ -415,4 +415,17 @@ public class ResourceUtils {
   synchronized public static void resetNodeResources() {
     initializedNodeResources = false;
   }
+
+  /**
+   * Get default unit by given resource type.
+   * @param resourceType resourceType
+   * @return default unit
+   */
+  public static String getDefaultUnit(String resourceType) {
+    ResourceInformation ri = getResourceTypes().get(resourceType);
+    if (null != ri) {
+      return ri.getUnits();
+    }
+    return "";
+  }
 }
