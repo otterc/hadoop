@@ -164,11 +164,25 @@ public class ResourceUtils {
             .newInstance(resourceName, resourceUnits, 0L, resourceType));
       }
     }
+
     checkMandatoryResources(resourceInformationMap);
     addMandatoryResources(resourceInformationMap);
+
+    initializeResourcesFromResourceInformationMap(resourceInformationMap);
+  }
+
+  /**
+   * This method is visible for testing, unit test can construct a
+   * resourceInformationMap and pass it to this method to initialize multiple resources.
+   * @param resourceInformationMap constructed resource information map.
+   */
+  @VisibleForTesting
+  public static void initializeResourcesFromResourceInformationMap(
+      Map<String, ResourceInformation> resourceInformationMap) {
     resourceTypes = Collections.unmodifiableMap(resourceInformationMap);
     updateKnownResources();
     updateResourceTypeIndex();
+    initializedResources = true;
   }
 
   private static void updateKnownResources() {
@@ -265,14 +279,12 @@ public class ResourceUtils {
           try {
             addResourcesFileToConf(resourceFile, conf);
             LOG.debug("Found " + resourceFile + ", adding to configuration");
-            initializeResourcesMap(conf);
-            initializedResources = true;
           } catch (FileNotFoundException fe) {
             LOG.info("Unable to find '" + resourceFile
                 + "'. Falling back to memory and vcores as resources.");
-            initializeResourcesMap(conf);
-            initializedResources = true;
           }
+          initializeResourcesMap(conf);
+
         }
       }
     }
@@ -425,7 +437,7 @@ public class ResourceUtils {
    */
   public static String getDefaultUnit(String resourceType) {
     ResourceInformation ri = getResourceTypes().get(resourceType);
-    if (null != ri) {
+    if (ri != null) {
       return ri.getUnits();
     }
     return "";
