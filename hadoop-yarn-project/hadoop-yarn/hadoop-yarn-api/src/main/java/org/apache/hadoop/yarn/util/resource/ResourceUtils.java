@@ -261,11 +261,10 @@ public class ResourceUtils {
             addResourcesFileToConf(resourceFile, conf);
             LOG.debug("Found " + resourceFile + ", adding to configuration");
           } catch (FileNotFoundException fe) {
-            LOG.info("Unable to find '" + resourceFile
-                + "'. Falling back to memory and vcores as resources.");
+            LOG.debug("Unable to find '" + resourceFile + "'.");
           }
-          initializeResourcesMap(conf);
 
+          initializeResourcesMap(conf);
         }
       }
     }
