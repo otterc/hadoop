@@ -26,7 +26,9 @@ import org.apache.hadoop.yarn.proto.YarnProtos.ContainerRetryPolicyProto;
 import org.apache.hadoop.yarn.proto.YarnProtos.ContainerRetryContextProto;
 import org.apache.hadoop.yarn.proto.YarnProtos.ContainerRetryContextProtoOrBuilder;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -39,6 +41,7 @@ public class ContainerRetryContextPBImpl extends ContainerRetryContext {
   private boolean viaProto = false;
 
   private Set<Integer> errorCodes = null;
+  private List<Long> restartTimes = null;
 
   public ContainerRetryContextPBImpl() {
     builder = ContainerRetryContextProto.newBuilder();
@@ -81,6 +84,10 @@ public class ContainerRetryContextPBImpl extends ContainerRetryContext {
     if (this.errorCodes != null) {
       builder.clearErrorCodes();
       builder.addAllErrorCodes(this.errorCodes);
+    }
+    if (this.restartTimes != null) {
+      builder.clearRestartTimes();
+      builder.addAllRestartTimes(this.restartTimes);
     }
   }
 
@@ -163,6 +170,58 @@ public class ContainerRetryContextPBImpl extends ContainerRetryContext {
   public void setRetryInterval(int retryInterval) {
     maybeInitBuilder();
     builder.setRetryInterval(retryInterval);
+  }
+
+  @Override
+  public long getFailuresValidityInterval() {
+    ContainerRetryContextProtoOrBuilder p = viaProto ? proto : builder;
+    if (!p.hasFailuresValidityInterval()) {
+      return -1;
+    }
+    return p.getFailuresValidityInterval();
+  }
+
+  @Override
+  public void setFailuresValidityInterval(long failuresValidityInterval) {
+    maybeInitBuilder();
+    builder.setFailuresValidityInterval(failuresValidityInterval);
+  }
+
+  @Override
+  public int getRemainingRetries() {
+    ContainerRetryContextProtoOrBuilder p = viaProto ? proto : builder;
+    if (!p.hasRemainingRetries()) {
+      return 0;
+    }
+    return p.getRemainingRetries();
+  }
+
+  @Override
+  public void setRemainingRetries(int remainingRetries) {
+    maybeInitBuilder();
+    builder.setRemainingRetries(remainingRetries);
+  }
+
+  private void initRestartTimes() {
+    if (this.restartTimes != null) {
+      return;
+    }
+    ContainerRetryContextProtoOrBuilder p = viaProto ? proto : builder;
+    this.restartTimes = new ArrayList<>();
+    this.restartTimes.addAll(p.getRestartTimesList());
+  }
+
+  @Override
+  public List<Long> getRestartTimes() {
+    initRestartTimes();
+    return this.restartTimes;
+  }
+
+  @Override
+  public void setRestartTimes(List<Long> restartTimes) {
+    maybeInitBuilder();
+    builder.clearRestartTimes();
+    this.restartTimes = restartTimes;
   }
 
   private ContainerRetryPolicyProto convertToProtoFormat(

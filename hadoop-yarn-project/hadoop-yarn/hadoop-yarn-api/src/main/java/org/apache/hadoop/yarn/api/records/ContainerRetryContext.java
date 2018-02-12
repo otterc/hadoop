@@ -23,6 +23,7 @@ import org.apache.hadoop.classification.InterfaceAudience.Public;
 import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.yarn.util.Records;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -49,6 +50,13 @@ import java.util.Set;
  *   </li>
  *   <li><em>retryInterval</em> specifies delaying some time before relaunch
  *   container, the unit is millisecond.</li>
+ *   <li>
+ *     <em>failuresValidityInterval</em>: default value is -1.
+ *     When failuresValidityInterval in milliseconds is set to {@literal >} 0,
+ *     the failure number will not take failures which happen out of the
+ *     failuresValidityInterval into failure count. If failure count
+ *     reaches to <em>maxRetries</em>, the container will be failed.
+ *   </li>
  * </ul>
  */
 @Public
@@ -63,14 +71,27 @@ public abstract class ContainerRetryContext {
   @Unstable
   public static ContainerRetryContext newInstance(
       ContainerRetryPolicy retryPolicy, Set<Integer> errorCodes,
-      int maxRetries, int retryInterval) {
+      int maxRetries, int retryInterval, long failuresValidityInterval,
+      int remainingRetries, List<Long> restartTimes) {
     ContainerRetryContext containerRetryContext =
         Records.newRecord(ContainerRetryContext.class);
     containerRetryContext.setRetryPolicy(retryPolicy);
     containerRetryContext.setErrorCodes(errorCodes);
     containerRetryContext.setMaxRetries(maxRetries);
     containerRetryContext.setRetryInterval(retryInterval);
+    containerRetryContext.setFailuresValidityInterval(failuresValidityInterval);
+    containerRetryContext.setRemainingRetries(remainingRetries);
+    containerRetryContext.setRestartTimes(restartTimes);
     return containerRetryContext;
+  }
+
+  @Private
+  @Unstable
+  public static ContainerRetryContext newInstance(
+      ContainerRetryPolicy retryPolicy, Set<Integer> errorCodes,
+      int maxRetries, int retryInterval) {
+    return newInstance(retryPolicy, errorCodes, maxRetries, retryInterval, -1,
+        0, null);
   }
 
   public abstract ContainerRetryPolicy getRetryPolicy();
@@ -81,4 +102,11 @@ public abstract class ContainerRetryContext {
   public abstract void setMaxRetries(int maxRetries);
   public abstract int getRetryInterval();
   public abstract void setRetryInterval(int retryInterval);
+  public abstract long getFailuresValidityInterval();
+  public abstract void setFailuresValidityInterval(
+      long failuresValidityInterval);
+  public abstract int getRemainingRetries();
+  public abstract void setRemainingRetries(int remainingRetries);
+  public abstract List<Long> getRestartTimes();
+  public abstract void setRestartTimes(List<Long> restartTimes);
 }

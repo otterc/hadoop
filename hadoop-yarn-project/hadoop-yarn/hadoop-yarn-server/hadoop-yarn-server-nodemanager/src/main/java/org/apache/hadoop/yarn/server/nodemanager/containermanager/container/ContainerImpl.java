@@ -23,13 +23,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Date;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -37,6 +31,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.yarn.api.records.ContainerSubState;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.scheduler.UpdateContainerSchedulerEvent;
+import org.apache.hadoop.yarn.server.retry.SlidingWindowRetryPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -167,9 +162,10 @@ public class ContainerImpl implements Container {
   private long containerLaunchStartTime;
   private ContainerMetrics containerMetrics;
   private static Clock clock = SystemClock.getInstance();
+
   private ContainerRetryContext containerRetryContext;
-  // remaining retries to relaunch container if needed
-  private int remainingRetryAttempts;
+  private SlidingWindowRetryPolicy retryPolicy;
+
   private String workDir;
   private String logDir;
   private String host;
@@ -246,7 +242,8 @@ public class ContainerImpl implements Container {
     // Configure the Retry Context
     this.containerRetryContext = configureRetryContext(
         conf, launchContext, this.containerId);
-    this.remainingRetryAttempts = this.containerRetryContext.getMaxRetries();
+    this.retryPolicy = new SlidingWindowRetryPolicy(clock);
+
     stateMachine = stateMachineFactory.make(this, ContainerState.NEW,
         context.getContainerStateTransitionListener());
     this.context = context;
@@ -289,7 +286,9 @@ public class ContainerImpl implements Container {
     this.recoveredAsKilled = rcs.getKilled();
     this.diagnostics.append(rcs.getDiagnostics());
     this.version = rcs.getVersion();
-    this.remainingRetryAttempts = rcs.getRemainingRetryAttempts();
+    this.containerRetryContext.setRemainingRetries(
+        rcs.getRemainingRetryAttempts());
+    this.containerRetryContext.setRestartTimes(rcs.getRestartTimes());
     this.workDir = rcs.getWorkDir();
     this.logDir = rcs.getLogDir();
     this.resourceMappings = rcs.getResourceMappings();
@@ -1592,7 +1591,7 @@ public class ContainerImpl implements Container {
         if (container.containerRetryContext.getRetryPolicy()
             != ContainerRetryPolicy.NEVER_RETRY) {
           int n = container.containerRetryContext.getMaxRetries()
-              - container.remainingRetryAttempts;
+              - container.containerRetryContext.getRemainingRetries();
           container.addDiagnostics("Diagnostic message from attempt "
               + n + " : ", "\n");
         }
@@ -1600,18 +1599,9 @@ public class ContainerImpl implements Container {
       }
 
       if (container.shouldRetry(container.exitCode)) {
-        if (container.remainingRetryAttempts > 0) {
-          container.remainingRetryAttempts--;
-          try {
-            container.stateStore.storeContainerRemainingRetryAttempts(
-                container.getContainerId(), container.remainingRetryAttempts);
-          } catch (IOException e) {
-            LOG.warn(
-                "Unable to update remainingRetryAttempts in state store for "
-                    + container.getContainerId(), e);
-          }
-        }
-        doRelaunch(container, container.remainingRetryAttempts,
+        container.storeRetryContext();
+        doRelaunch(container,
+            container.containerRetryContext.getRemainingRetries(),
             container.containerRetryContext.getRetryInterval());
         return ContainerState.RELAUNCHING;
       } else if (container.canRollback()) {
@@ -1671,29 +1661,14 @@ public class ContainerImpl implements Container {
 
   @Override
   public boolean shouldRetry(int errorCode) {
-    return shouldRetry(errorCode, containerRetryContext,
-        remainingRetryAttempts);
-  }
-
-  public static boolean shouldRetry(int errorCode,
-      ContainerRetryContext retryContext, int remainingRetryAttempts) {
     if (errorCode == ExitCode.SUCCESS.getExitCode()
         || errorCode == ExitCode.FORCE_KILLED.getExitCode()
         || errorCode == ExitCode.TERMINATED.getExitCode()) {
       return false;
     }
-
-    ContainerRetryPolicy retryPolicy = retryContext.getRetryPolicy();
-    if (retryPolicy == ContainerRetryPolicy.RETRY_ON_ALL_ERRORS
-        || (retryPolicy == ContainerRetryPolicy.RETRY_ON_SPECIFIC_ERROR_CODES
-        && retryContext.getErrorCodes() != null
-        && retryContext.getErrorCodes().contains(errorCode))) {
-      return remainingRetryAttempts > 0
-          || remainingRetryAttempts == ContainerRetryContext.RETRY_FOREVER;
-    }
-
-    return false;
+    return retryPolicy.shouldRetry(containerRetryContext, errorCode);
   }
+
   /**
    * Transition to EXITED_WITH_FAILURE
    */
@@ -1729,9 +1704,7 @@ public class ContainerImpl implements Container {
       container.containerRetryContext =
           configureRetryContext(container.context.getConf(),
               container.launchContext, container.containerId);
-      // Reset the retry attempts since its a fresh start
-      container.remainingRetryAttempts =
-          container.containerRetryContext.getMaxRetries();
+      container.retryPolicy = new SlidingWindowRetryPolicy(clock);
 
       container.resourceSet =
           container.reInitContext.mergedResourceSet(container.resourceSet);
@@ -2208,5 +2181,32 @@ public class ContainerImpl implements Container {
         new DockerContainerDeletionTask(deletionService, container.user,
             container.getContainerId().toString());
     deletionService.delete(deletionTask);
+  }
+
+  private void storeRetryContext() {
+    if (containerRetryContext.getRestartTimes() != null) {
+      try {
+        stateStore.storeContainerRestartTimes(containerId,
+            containerRetryContext.getRestartTimes());
+      } catch (IOException e) {
+        LOG.warn(
+            "Unable to update finishTimeForRetryAttempts in state store for "
+                + containerId, e);
+      }
+    }
+    try {
+      stateStore.storeContainerRemainingRetryAttempts(containerId,
+          containerRetryContext.getRemainingRetries());
+    } catch (IOException e) {
+      LOG.warn(
+          "Unable to update remainingRetryAttempts in state store for "
+              + containerId, e);
+    }
+  }
+
+  @VisibleForTesting
+  void setClock(Clock targetClock) {
+    clock = targetClock;
+    retryPolicy.setClock(clock);
   }
 }

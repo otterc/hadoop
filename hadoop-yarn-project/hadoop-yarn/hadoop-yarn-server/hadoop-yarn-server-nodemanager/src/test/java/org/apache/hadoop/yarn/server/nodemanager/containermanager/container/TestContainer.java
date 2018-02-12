@@ -105,6 +105,8 @@ import org.apache.hadoop.yarn.server.nodemanager.metrics.NodeManagerMetrics;
 import org.apache.hadoop.yarn.server.nodemanager.NodeStatusUpdater;
 import org.apache.hadoop.yarn.server.nodemanager.recovery.NMNullStateStoreService;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
+import org.apache.hadoop.yarn.util.Clock;
+import org.apache.hadoop.yarn.util.ControlledClock;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.ArgumentMatcher;
@@ -1088,6 +1090,39 @@ public class TestContainer {
     }
   }
 
+  @Test
+  public void testContainerRetryFailureValidityInterval() throws Exception {
+    ContainerRetryContext containerRetryContext = ContainerRetryContext
+        .newInstance(ContainerRetryPolicy.RETRY_ON_ALL_ERRORS, null, 1, 0, 10,
+            0, null);
+    WrappedContainer wc = null;
+    try {
+      wc = new WrappedContainer(25, 314159265358980L, 4200, "test",
+          containerRetryContext);
+      ControlledClock clock = new ControlledClock();
+      wc.setClock(clock);
+      wc.initContainer();
+      wc.localizeResources();
+      wc.launchContainer();
+      wc.containerFailed(12);
+      assertEquals(ContainerState.RUNNING, wc.c.getContainerState());
+      clock.setTime(20);
+      wc.containerFailed(12);
+      assertEquals(ContainerState.RUNNING, wc.c.getContainerState());
+      clock.setTime(40);
+      wc.containerFailed(12);
+      assertEquals(ContainerState.RUNNING, wc.c.getContainerState());
+      clock.setTime(45);
+      wc.containerFailed(12);
+      assertEquals(ContainerState.EXITED_WITH_FAILURE,
+          wc.c.getContainerState());
+    } finally {
+      if (wc != null) {
+        wc.finished();
+      }
+    }
+  }
+
   private void verifyCleanupCall(WrappedContainer wc) throws Exception {
     ResourcesReleasedMatcher matchesReq =
         new ResourcesReleasedMatcher(wc.localResources, EnumSet.of(
@@ -1547,6 +1582,10 @@ public class TestContainer {
 
     public String getDiagnostics() {
       return c.cloneAndGetContainerStatus().getDiagnostics();
+    }
+
+    public void setClock(Clock clock) {
+      ((ContainerImpl)c).setClock(clock);
     }
   }
 }
