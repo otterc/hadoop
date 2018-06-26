@@ -42,6 +42,10 @@ public interface RestApiConstants {
   String COMPONENT_NAME = "component_name";
   String COMP_INSTANCE_NAME = "component_instance_name";
 
+  String PARAM_COMP_NAMES = "componentNames";
+  String PARAM_VERSION = "version";
+  String PARAM_CONTAINER_STATES = "containerStates";
+
   String MEDIA_TYPE_JSON_UTF8 = MediaType.APPLICATION_JSON + ";charset=utf-8";
 
   Long DEFAULT_UNLIMITED_LIFETIME = -1l;

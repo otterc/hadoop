@@ -25,8 +25,10 @@ import java.util.List;
 import java.util.Map;
 
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.UriBuilder;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -48,10 +50,8 @@ import org.apache.hadoop.yarn.service.api.records.Service;
 import org.apache.hadoop.yarn.service.api.records.ServiceState;
 import org.apache.hadoop.yarn.service.api.records.ServiceStatus;
 import org.apache.hadoop.yarn.service.conf.RestApiConstants;
-import org.apache.hadoop.yarn.service.utils.JsonSerDeser;
 import org.apache.hadoop.yarn.service.utils.ServiceApiUtil;
 import org.apache.hadoop.yarn.util.RMHAUtils;
-import org.codehaus.jackson.map.PropertyNamingStrategy;
 import org.eclipse.jetty.util.UrlEncoded;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -169,6 +169,30 @@ public class ApiServiceClient extends AppAdminClient {
           .encodeString(System.getProperty("user.name")));
     }
     return api.toString();
+  }
+
+  private String getInstancePath(String appName, List<String> components,
+      String version, List<String> containerStates) throws IOException {
+    String url = getRMWebAddress();
+    UriBuilder builder = UriBuilder.fromUri(url).path("/app/v1/services/")
+        .path(appName).path(RestApiConstants.COMP_INSTANCES);
+    Configuration conf = getConfig();
+    if (conf.get("hadoop.http.authentication.type").equalsIgnoreCase(
+        "simple")) {
+      builder.queryParam("user.name", UrlEncoded
+              .encodeString(System.getProperty("user.name")));
+    }
+    if (components != null && !components.isEmpty()) {
+      builder.queryParam(RestApiConstants.PARAM_COMP_NAMES, components);
+    }
+    if (!Strings.isNullOrEmpty(version)){
+      builder.queryParam(RestApiConstants.PARAM_VERSION, version);
+    }
+    if (containerStates != null && !containerStates.isEmpty()){
+      builder.queryParam(RestApiConstants.PARAM_CONTAINER_STATES,
+          containerStates);
+    }
+    return builder.toString();
   }
 
   private String getComponentsPath(String appName) throws IOException {
@@ -553,7 +577,7 @@ public class ApiServiceClient extends AppAdminClient {
         container.setState(ContainerState.UPGRADING);
         toUpgrade[idx++] = container;
       }
-      String buffer = CONTAINER_JSON_SERDE.toJson(toUpgrade);
+      String buffer = ServiceApiUtil.CONTAINER_JSON_SERDE.toJson(toUpgrade);
       ClientResponse response = getApiClient(getInstancesPath(appName))
           .put(ClientResponse.class, buffer);
       result = processResponse(response);
@@ -577,7 +601,7 @@ public class ApiServiceClient extends AppAdminClient {
         component.setState(ComponentState.UPGRADING);
         toUpgrade[idx++] = component;
       }
-      String buffer = COMP_JSON_SERDE.toJson(toUpgrade);
+      String buffer = ServiceApiUtil.COMP_JSON_SERDE.toJson(toUpgrade);
       ClientResponse response = getApiClient(getComponentsPath(appName))
           .put(ClientResponse.class, buffer);
       result = processResponse(response);
@@ -599,11 +623,24 @@ public class ApiServiceClient extends AppAdminClient {
     return result;
   }
 
-  private static final JsonSerDeser<Container[]> CONTAINER_JSON_SERDE =
-      new JsonSerDeser<>(Container[].class,
-          PropertyNamingStrategy.CAMEL_CASE_TO_LOWER_CASE_WITH_UNDERSCORES);
-
-  private static final JsonSerDeser<Component[]> COMP_JSON_SERDE =
-      new JsonSerDeser<>(Component[].class,
-          PropertyNamingStrategy.CAMEL_CASE_TO_LOWER_CASE_WITH_UNDERSCORES);
+  @Override
+  public String getInstances(String appName, List<String> components,
+      String version, List<String> containerStates) throws IOException,
+      YarnException {
+    try {
+      ClientResponse response = getApiClient(getInstancePath(appName,
+          components, version, containerStates)).get(ClientResponse.class);
+      if (response.getStatus() != 200) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(appName);
+        sb.append(" Failed : HTTP error code : ");
+        sb.append(response.getStatus());
+        return sb.toString();
+      }
+      return response.getEntity(String.class);
+    } catch (Exception e) {
+      LOG.error("Fail to get containers {}", e);
+    }
+    return null;
+  }
 }
